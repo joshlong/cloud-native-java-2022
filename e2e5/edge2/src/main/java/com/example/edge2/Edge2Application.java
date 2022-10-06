@@ -1,7 +1,5 @@
 package com.example.edge2;
 
-import io.netty.resolver.dns.macos.MacOSDnsServerAddressStreamProvider;
-import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
@@ -12,15 +10,11 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.core.DecoratingProxy;
-import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.support.WebClientAdapter;
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 import reactor.core.publisher.Flux;
-
-import java.util.Locale;
-import java.util.Set;
 
 @SpringBootApplication
 @RegisterReflectionForBinding(Customer.class)
@@ -29,19 +23,8 @@ public class Edge2Application {
 
     static class Hints implements RuntimeHintsRegistrar {
 
-        private static boolean isMacOs() {
-            var osName = System.getProperty("os.name");
-            return StringUtils.hasText(osName) && osName.toLowerCase(Locale.ROOT).contains("mac os");
-        }
-
         @Override
         public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
-            var classes = isMacOs() ? //
-                    Set.of(Customer.class, MacOSDnsServerAddressStreamProvider.class) : //
-                    Set.of(Customer.class);
-            for (var ac : classes) {
-                hints.reflection().registerType(ac, MemberCategory.values());
-            }
             hints
                     .proxies()
                     .registerJdkProxy(
@@ -56,30 +39,19 @@ public class Edge2Application {
     }
 
     @Bean
-    WebClient webClient(WebClient.Builder builder) {
-        return builder.baseUrl("http://localhost:8080/").build();
+    ApplicationListener<ApplicationReadyEvent> httpClientRunner(CrmClient crmClient) {
+        return event -> crmClient.getCustomers().subscribe(System.out::println);
     }
 
     @Bean
-    ApplicationListener<ApplicationReadyEvent> httpClientRunner(CrmClient crmClient) {
-        return event -> crmClient.getCustomers().subscribe(System.out::println);
+    HttpServiceProxyFactory httpServiceProxyFactory(WebClient.Builder http) {
+        return WebClientAdapter.createHttpServiceProxyFactory(http.baseUrl("http://localhost:8080/"));
     }
 
     @Bean
     CrmClient crmClient(HttpServiceProxyFactory httpServiceProxyFactory) {
         return httpServiceProxyFactory.createClient(CrmClient.class);
     }
-
-    @Bean
-    HttpServiceProxyFactory httpServiceProxyFactory(WebClientAdapter adapter) {
-        return new HttpServiceProxyFactory(adapter);
-    }
-
-    @Bean
-    WebClientAdapter webClientAdapter(WebClient webClient) {
-        return WebClientAdapter.forClient(webClient);
-    }
-
 }
 
 interface CrmClient {
